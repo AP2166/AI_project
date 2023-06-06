@@ -1,9 +1,6 @@
-import ast
 import json
 
-from project import parse_ast
-from parse import parse_file
-from code_to_readable import PARSED_SNIPPETS
+from AI_project.scripts.parse import parse_file
 from model import Model
 
 class AutoComplete():

@@ -10,6 +10,7 @@ from parse import parse_file
 from code_to_readable import PARSED_SNIPPETS
 from parse_user_input import parse_user_input
 
+
 class AutoComplete():
     def __init__(self):
         self.table = {}
@@ -47,7 +48,6 @@ class AutoComplete():
                         child_item['type']: 1
                     }
 
-
                 self.create_chain(child_item, coll)
 
     def get_percentages(self):
@@ -55,7 +55,7 @@ class AutoComplete():
 
         for item, val in self.table.items():
             total = sum(map(lambda x: x[1], val.items()))
-            percentages = {k: v/total for k, v in val.items()}
+            percentages = {k: v / total for k, v in val.items()}
             percent_tables[item] = percentages
 
         return percent_tables
@@ -87,7 +87,8 @@ class AutoComplete():
 
     def get_top(self, key):
         if key in self.table:
-            return list(map(lambda x: x if x[0] not in PARSED_SNIPPETS else PARSED_SNIPPETS[x[0]], sorted(self.table[key].items(), key=lambda x: x[1],  reverse=True)))
+            return list(map(lambda x: x if x[0] not in PARSED_SNIPPETS else PARSED_SNIPPETS[x[0]],
+                            sorted(self.table[key].items(), key=lambda x: x[1], reverse=True)))
 
     @staticmethod
     def parse_func_call(text):
@@ -120,26 +121,25 @@ class AutoComplete():
                 return text.replace(":", ""), "FunctionDef"
             elif text[:5] == "class":
                 return text.replace(":", ""), "ClassDef"
-            #return text.replace(":", ""), "Conditional"
+            # return text.replace(":", ""), "Conditional"
 
         return text, None
 
     def listen(self):
         print("Suggestions: ", self.get_top('Module'))
         user_input = ""
-        key_interrupt = False
-        while not key_interrupt:
+        while True:
             input_var = input()
+            # check if the user is done with the input
             if input_var == "exit":
-                #key_interrupt = True
                 break
             parsed, key = self.parse_func_call(input_var)
 
-            #self.lines += parsed + "\n"
+            # self.lines += parsed + "\n"
             self.lines += input_var + "\n"
             user_input += input_var + "\n"
 
-            if (input_var[-1] != " "):
+            if input_var[-1] != " ":
                 last = {'type': key}
 
                 if not key:
@@ -148,43 +148,26 @@ class AutoComplete():
 
                 print('Current type: ',
                       last['type'], " Suggestions: ", self.get_top(last['type']))
-        #user_input = self.lines
-        parsed_input = parse_user_input(user_input)
-        self.create_chain(parsed_input[0], parsed_input)
-        json_object = json.dumps(self.table, indent=4)
-        print(parsed_input)
-        #print(json_object)
-        #
-        with open("online_learning_table.json", "w") as outfile:
-             # json.dump(json_object, outfile)
-             outfile.write(json_object)
 
+        try:
+            with open("user_input.json", "w") as f:
+                f.write(parse_user_input(user_input))
+            a.train("user_input.json")
+
+            json_object = json.dumps(self.table, indent=4)
+
+            with open("online_learning_table_full.json", "w") as outfile:
+                outfile.write(json_object)
+            print("Online learning successful! Table saved to online_learning_table_full.json")
+        except Exception as e:
+            print("Online learning failed")
+            print(e)
 
 
 a = AutoComplete()
 
-#a.train("data/python150k.json")
-# a.train("data/python50k_eval.json")
-# a.train("data/python100k_train.json")
-# print('Training finished')
-#
-# json_object = json.dumps(a.table, indent = 4)
-# print(json_object)
-#
-# with open("trained_150k_v2.json", "w") as outfile:
-#     # json.dump(json_object, outfile)
-#     outfile.write(json_object)
-#
-with open("trained_150k_v2.json", "r") as read_content:
+with open("../trained_150k_v2.json", "r") as read_content:
     table = json.load(read_content)
     a.table = table
 
-a.train("sample_user_input.json")
-json_object = json.dumps(a.table, indent = 4)
-print(json_object)
-
-with open("trained_150k_v2_online.json", "w") as outfile:
-    # json.dump(json_object, outfile)
-    outfile.write(json_object)
-
-# a.listen()
+a.listen()
