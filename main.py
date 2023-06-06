@@ -4,7 +4,7 @@ import json
 from project import parse_ast
 from parse import parse_file
 from code_to_readable import PARSED_SNIPPETS
-
+from model import Model
 
 class AutoComplete():
     def __init__(self):
@@ -14,55 +14,34 @@ class AutoComplete():
         self.types2values = {}
         self.namespaces = {}
 
+    def _log_values(self, namespace, value):
+        if namespace in self.namespaces:
+            self.namespaces[namespace].append(value)
+        else:
+            self.namespaces[namespace] = [value]
+
     # CREATES A LOCAL COLLECTION TO LEARN FROM
-    def log_values(self, base, curr_val):
-        if 'children' in base and 'value' in base:
-            for child in base['children']:
-                if 'value' in child:
-                    if base['value'] in self.namespaces:
-                        self.namespaces[base['value']].append(child['value'])
-                    else:
-                        self.namespaces[base['value']] = [child['value']]
+    def log_values(self, base, coll, namespace):
 
-    def create_chain(self, base, coll, indexed=True):
-        if 'children' in base:
-            for child in base['children']:
-                # self.table[base['type'], coll[children]['type']] = self.table.get(
-                #     (base['type'], coll[children]['type']), 0) + 1
-                if indexed:
-                    child_item = coll[child]
-                else:
-                    child_item = child
-                if base['type'] in self.table:
-                    if coll[child]['type'] in self.table[base['type']]:
-                        self.table[base['type']][child_item['type']] += 1
-                    else:
-                        self.table[base['type']][child_item['type']] = 1
-                else:
-                    self.table[base['type']] = {
-                        child_item['type']: 1
-                    }
+        if base['type'] == 'Assign': 
+            first_child = coll[base['children'][0]]
 
+            if first_child['type'] == 'NameStore' and first_child['value'] != None:
+                    self._log_values(namespace, first_child['value'])
 
-                self.create_chain(child_item, coll)
+            self.log_values(coll[base['children'][1]], coll, first_child['value'])
 
-    def get_percentages(self):
-        percent_tables = {}
+        elif base['type'] == 'Dict' and base['children']: 
+            children_len = int(len(base['children'])/2)
 
-        for item, val in self.table.items():
-            total = sum(map(lambda x: x[1], val.items()))
-            percentages = {k: v/total for k, v in val.items()}
-            percent_tables[item] = percentages
+            for child in base['children'][:children_len]:
+                self._log_values(namespace, coll[child]['value'])
+                self.log_values(coll[child + children_len], coll, coll[child]['value'])
 
-        return percent_tables
-
-    def train(self, file):
-        f = open(file)
-        lines = f.readlines()
-
-        for coll in lines[:1000]:
-            item = json.loads(coll)
-            self.create_chain(item[0], item)
+        else: 
+            if 'children' in base:
+                for child in base['children']:
+                    self.log_values(coll[child], coll, namespace)
 
     def generate_types_values(self, tree):
         tree = json.loads(tree)
@@ -75,15 +54,13 @@ class AutoComplete():
 
     def generate_ast(self):
         tree = None
-
+        
         tree = parse_file(self.lines)
+        parsed_tree = json.loads(tree)
+        self.log_values(parsed_tree[0], parsed_tree, '*')
+        print(self.namespaces)
 
         return tree
-        # self.generate_types_values(tree)
-
-    def get_top(self, key):
-        if key in self.table:
-            return list(map(lambda x: x if x[0] not in PARSED_SNIPPETS else PARSED_SNIPPETS[x[0]], sorted(self.table[key].items(), key=lambda x: x[1],  reverse=True)))
 
     @staticmethod
     def parse_func_call(text):
@@ -118,8 +95,7 @@ class AutoComplete():
 
         return text, None
 
-    def listen(self):
-        print("Suggestions: ", self.get_top('Module'))
+    def listen(self, model: Model):
         while True:
             input_var = input()
             parsed, key = self.parse_func_call(input_var)
@@ -131,15 +107,22 @@ class AutoComplete():
 
                 if not key:
                     tree = self.generate_ast()
+                    print('generated tree', tree)
                     last = json.loads(tree)[-1]
+                suggestions = model.get_top(last['type'])
+
+                if suggestions:
+                    suggestions = list(map(lambda key:  (*key, self.namespaces.get('*', [])) if key[0] == 'NameStore' else key, suggestions))
 
                 print('Current type: ',
-                      last['type'], " Suggestions: ", self.get_top(last['type']))
+                      last['type'], " Suggestions: ", suggestions)
+                
 
+if __name__=="__main__":
+    a = AutoComplete()
+    m = Model()
 
-a = AutoComplete()
+    #m.train("data/python50k_eval.json")
+    m.read_model()
 
-a.train("data/python50k_eval.json")
-print('Training finished')
-
-a.listen()
+    a.listen(m)
